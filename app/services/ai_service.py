@@ -34,8 +34,8 @@ class AIService:
                     f"Description: {description}\n"
                     f"Book: {book_title or 'General / Account Query'}\n\n"
                     f"Return a JSON object with:\n"
-                    f"1. classification: One of ['Royalty & Payouts', 'Publishing & Editing', 'Distribution & Inventory', 'Account & Profile', 'General Inquiry']\n"
-                    f"2. priority: One of ['Urgent', 'High', 'Medium', 'Low'] (Urgent if payout delays or legal issues)\n"
+                    f"1. classification: One of ['Royalty & Payments', 'ISBN & Metadata Issues', 'Printing & Quality', 'Distribution & Availability', 'Book Status & Production Updates', 'General Inquiry']\n"
+                    f"2. priority: One of ['Critical', 'High', 'Medium', 'Low'] (Critical if prolonged payout delays, severe printing defect, or missing ISBN)\n"
                     f"3. reply_draft: A professional, empathetic response draft for BookLeaf admin to review and send to the author."
                 )
                 payload = json.dumps({"contents": [{"parts": [{"text": prompt}]}]}).encode("utf-8")
@@ -54,25 +54,29 @@ class AIService:
         # Heuristic / Rule-based Fallback Engine
         text_lower = f"{subject} {description}".lower()
         
-        # Determine classification
-        if any(w in text_lower for w in ["royalty", "payout", "payment", "bank", "neft", "earned", "tds"]):
-            category = "Royalty & Payouts"
-        elif any(w in text_lower for w in ["publish", "cover", "isbn", "manuscript", "format", "edit"]):
-            category = "Publishing & Editing"
-        elif any(w in text_lower for w in ["amazon", "flipkart", "stock", "copies", "delivery", "order"]):
-            category = "Distribution & Inventory"
-        elif any(w in text_lower for w in ["password", "login", "email", "profile", "phone"]):
-            category = "Account & Profile"
+        # Determine classification (as per BookLeaf specifications)
+        if any(w in text_lower for w in ["royalty", "payout", "payment", "bank", "neft", "earned", "tds", "money", "threshold"]):
+            category = "Royalty & Payments"
+        elif any(w in text_lower for w in ["isbn", "metadata", "barcode", "imprint"]):
+            category = "ISBN & Metadata Issues"
+        elif any(w in text_lower for w in ["print", "quality", "binding", "paper", "blur", "misprint", "damage", "copies"]):
+            category = "Printing & Quality"
+        elif any(w in text_lower for w in ["amazon", "flipkart", "store", "distribution", "stock", "unavailable", "listing"]):
+            category = "Distribution & Availability"
+        elif any(w in text_lower for w in ["typesetting", "proofread", "cover", "editing", "production", "status", "manuscript", "live", "delay"]):
+            category = "Book Status & Production Updates"
         else:
             category = "General Inquiry"
 
-        # Determine priority
-        if any(w in text_lower for w in ["urgent", "delayed", "missing payout", "unpaid", "legal", "discrepancy"]):
-            priority = "Urgent"
-        elif any(w in text_lower for w in ["error", "wrong", "cannot see", "failed"]):
+        # Determine priority (Critical / High / Medium / Low)
+        if any(w in text_lower for w in ["critical", "urgent", "delayed 6 months", "missing payout", "unpaid", "legal", "duplicate isbn", "terrible quality"]):
+            priority = "Critical"
+        elif any(w in text_lower for w in ["error", "wrong", "cannot see", "failed", "delayed", "missing"]):
             priority = "High"
-        else:
+        elif any(w in text_lower for w in ["update", "question", "when", "change"]):
             priority = "Medium"
+        else:
+            priority = "Low"
 
         # Proposed Reply Draft
         book_mention = f" for '{book_title}'" if book_title else ""

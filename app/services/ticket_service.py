@@ -54,13 +54,16 @@ class TicketService:
 
         ticket_number = f"BL-{uuid.uuid4().hex[:6].upper()}"
 
+        # Use AI classification by default unless explicitly categorized differently
+        ticket_category = ai_res.get("classification") if (not category or category == "General Inquiry") else category
+
         try:
             return await self.repo.create_ticket(
                 author_id=author_id,
                 subject=subject,
                 description=description,
                 ticket_number=ticket_number,
-                category=category or ai_res["classification"],
+                category=ticket_category or "General Inquiry",
                 priority=ai_res["priority"],
                 book_id=book_id,
                 attachment_url=attachment_url,
