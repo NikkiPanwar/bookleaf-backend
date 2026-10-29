@@ -29,7 +29,8 @@ class Settings:
     # CORS
     CORS_ORIGINS: List[str] = [
         "http://localhost:4200",
-        "http://127.0.0.1:4200"
+        "http://127.0.0.1:4200",
+        "https://bookleaf-frontend-nine.vercel.app/login"
     ]
 
 settings = Settings()
