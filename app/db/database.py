@@ -1,63 +1,70 @@
-from app.core.config import settings
 
+import logging
+
+from app.core.config import settings
+from sqlalchemy.engine import make_url
+from sqlalchemy.ext.asyncio import (
+    create_async_engine,
+    AsyncSession,
+    async_sessionmaker,
+)
+
+logger = logging.getLogger(__name__)
+
+# Database initialization
 engine = None
 AsyncSessionLocal = None
 HAS_ASYNC = False
 
 try:
-    from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
-    # Async PostgreSQL engine with asyncpg
-    from sqlalchemy.engine import make_url
     db_url = make_url(settings.DATABASE_URL)
-    
+
+    # Support PostgreSQL URLs from Neon
     if db_url.drivername == "postgresql":
         db_url = db_url.set(drivername="postgresql+asyncpg")
-        query = dict(db_url.query)
-        if "sslmode" in query:
-            sslmode = query.pop("sslmode")
-            
-            if sslmode in ("require", "verify-ca", "verify-full"):
-                query["ssl"] = True
-        
-        if "channel_binding" in query:
-            query.pop("channel_binding")
-            db_url = db_url.set(query=query)
-            engine = create_async_engine(db_url,echo=False,future=True,)
+    elif db_url.drivername != "postgresql+asyncpg":
+        raise ValueError(
+            f"Unsupported database driver: {db_url.drivername}"
+        )
+
+    # Remove query parameters not directly supported by asyncpg
+    query = dict(db_url.query)
+    sslmode = query.pop("sslmode", None)
+    query.pop("channel_binding", None)
+
+    db_url = db_url.set(query=query)
+
+    # Configure SSL for Neon PostgreSQL
+    connect_args = {}
+    if sslmode in ("require", "verify-ca", "verify-full"):
+        connect_args["ssl"] = "require"
+
+    engine = create_async_engine(
+        db_url,
+        echo=False,
+        pool_pre_ping=True,
+        connect_args=connect_args,
+    )
+
     AsyncSessionLocal = async_sessionmaker(
         bind=engine,
         class_=AsyncSession,
         expire_on_commit=False,
-        autocommit=False,
-        autoflush=False
+        autoflush=False,
     )
+
     HAS_ASYNC = True
+    logger.info("Async PostgreSQL engine initialized.")
+
 except Exception:
-    # Graceful fallback for local development before PostgreSQL/greenlet is installed
-    from sqlalchemy import create_engine
-    from sqlalchemy.orm import sessionmaker
-    try:
-        engine = create_engine("sqlite:///./bookleaf_dev.db", echo=False, future=True)
-    except Exception:
-        engine = create_engine("sqlite:///:memory:", echo=False, future=True)
-    AsyncSessionLocal = sessionmaker(bind=engine, expire_on_commit=False)
-    HAS_ASYNC = False
+    logger.exception("Failed to initialize database engine")
+    raise
+
 
 async def get_db():
-    """
-    Dependency for database session in FastAPI routes.
-    Guarantees session cleanup across async or sync sessions.
-    """
-    if HAS_ASYNC and AsyncSessionLocal:
-        async with AsyncSessionLocal() as session:
-            try:
-                yield session
-            finally:
-                await session.close()
-    elif AsyncSessionLocal:
-        session = AsyncSessionLocal()
+    """Provide an async database session to FastAPI routes."""
+    async with AsyncSessionLocal() as session:
         try:
             yield session
         finally:
-            session.close()
-    else:
-        yield None
+            await session.close()
