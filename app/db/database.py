@@ -7,11 +7,22 @@ HAS_ASYNC = False
 try:
     from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
     # Async PostgreSQL engine with asyncpg
-    engine = create_async_engine(
-        settings.DATABASE_URL,
-        echo=False,
-        future=True
-    )
+    from sqlalchemy.engine import make_url
+    db_url = make_url(settings.DATABASE_URL)
+    
+    if db_url.drivername == "postgresql":
+        db_url = db_url.set(drivername="postgresql+asyncpg")
+        query = dict(db_url.query)
+        if "sslmode" in query:
+            sslmode = query.pop("sslmode")
+            
+            if sslmode in ("require", "verify-ca", "verify-full"):
+                query["ssl"] = True
+        
+        if "channel_binding" in query:
+            query.pop("channel_binding")
+            db_url = db_url.set(query=query)
+            engine = create_async_engine(db_url,echo=False,future=True,)
     AsyncSessionLocal = async_sessionmaker(
         bind=engine,
         class_=AsyncSession,
